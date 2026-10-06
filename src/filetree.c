@@ -6,6 +6,7 @@ extern FileTreeState FT;
 void draw_file_tree();
 void refresh_flat_file_tree();
 int get_node_depth(FileTreeNode *node);
+static bool load_directory_children(FileTreeNode *node);
 
 FileTreeNode *create_file_tree_node(const char *path, bool is_dir) {
     FileTreeNode *node = malloc(sizeof(FileTreeNode));
@@ -27,6 +28,7 @@ FileTreeNode *create_file_tree_node(const char *path, bool is_dir) {
 
     node->is_dir = is_dir;
     node->expanded = false;
+    node->children_loaded = false;
     node->children = NULL;
     node->num_children = 0;
     node->parent_index = -1;
@@ -56,37 +58,53 @@ FileTreeNode *load_directory_tree(const char *path) {
         return node;
     }
     node->is_dir = S_ISDIR(st.st_mode);
+    return node;
+}
 
-    if (!node->is_dir) return node;
+static bool load_directory_children(FileTreeNode *node) {
+    if (!node || !node->is_dir || node->children_loaded) return true;
 
-    DIR *dir = opendir(path);
-    if (!dir) return node;
+    DIR *dir = opendir(node->path);
+    if (!dir) {
+        node->children_loaded = true;
+        return false;
+    }
 
+    bool loaded_all = true;
     struct dirent *entry;
-    node->children = NULL;
-    node->num_children = 0;
-
     while ((entry = readdir(dir)) != NULL) {
         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
             continue;
 
         char child_path[PATH_MAX];
-        snprintf(child_path, sizeof(child_path), "%s/%s", path, entry->d_name);
+        int path_len = snprintf(child_path, sizeof(child_path), "%s/%s",
+                                node->path, entry->d_name);
+        if (path_len < 0 || path_len >= (int)sizeof(child_path)) {
+            loaded_all = false;
+            continue;
+        }
 
         FileTreeNode *child = load_directory_tree(child_path);
-        if (child) {
-            node->num_children++;
-            node->children = realloc(node->children, node->num_children * sizeof(FileTreeNode *));
-            if (!node->children) {
-                free_file_tree(child);
-                closedir(dir);
-                return node;
-            }
-            node->children[node->num_children - 1] = child;
+        if (!child) {
+            loaded_all = false;
+            continue;
         }
+
+        FileTreeNode **new_children = realloc(
+            node->children, (node->num_children + 1) * sizeof(FileTreeNode *));
+        if (!new_children) {
+            free_file_tree(child);
+            loaded_all = false;
+            break;
+        }
+
+        node->children = new_children;
+        node->children[node->num_children++] = child;
     }
+
     closedir(dir);
-    return node;
+    node->children_loaded = true;
+    return loaded_all;
 }
 
 void flatten_file_tree(FileTreeNode *node, FileTreeNode ***array, int *count, int *capacity) {
@@ -188,6 +206,7 @@ void toggle_file_tree() {
             char cwd[PATH_MAX];
             if (!getcwd(cwd, sizeof(cwd))) strcpy(cwd, ".");
             FT.root = load_directory_tree(cwd);
+            load_directory_children(FT.root);
             if (FT.root) {
                 FT.root->expanded = true;
                 refresh_flat_file_tree();
@@ -219,6 +238,9 @@ void file_tree_toggle_expand() {
 
     FileTreeNode *node = FT.flat_nodes[E.file_tree_cursor];
     if (node->is_dir) {
+        if (!node->expanded) {
+            load_directory_children(node);
+        }
         node->expanded = !node->expanded;
         refresh_flat_file_tree();
         if (E.file_tree_cursor >= FT.flat_node_count)

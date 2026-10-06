@@ -32,7 +32,7 @@ Nimki is a simple text editor written in C.
 - find text with [ctrl + w] or [ctrl + f]
 - undo with [ctrl + z]
 - toggle line numbers with [ctrl + t]
-- toggle file tree with [ctrl + n]
+- toggle the file tree with [ctrl + n], navigate with arrow keys, expand directories with [tab] or [left/right], and open files with [enter]
 - select and copy text with [ctrl + k] (or mouse drag to select, [ctrl + k] to copy)
 - select all with [ctrl + a]
      

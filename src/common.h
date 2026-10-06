@@ -117,6 +117,7 @@ typedef struct FileTreeNode {
     char *path;
     bool is_dir;
     bool expanded;
+    bool children_loaded;
     struct FileTreeNode **children;
     int num_children;
     int parent_index;
